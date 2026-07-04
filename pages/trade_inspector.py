@@ -81,12 +81,24 @@ def _base_candlestick(df, title):
     return fig
 
 
-def _add_zone(fig, low, high, color, label):
-    if low is None or high is None:
+def _add_zone(fig, df, low, high, color, label):
+    if low is None or high is None or df is None or len(df) == 0:
         return
     fig.add_hrect(y0=low, y1=high, fillcolor=color, line_width=0, layer='below',
                    annotation_text=label, annotation_position='top left',
                    annotation_font=dict(size=10, color='#e8b04b'))
+    # Invisible fill trace spanning the whole chart width, purely so hovering
+    # anywhere inside the band shows the exact zone bounds - the hrect above
+    # already provides the visible shading.
+    x0, x1 = df.index.min(), df.index.max()
+    width = round(((high - low) / low) * 100, 2) if low else None
+    width_line = f"<br>Width: {width}%" if width is not None else ""
+    fig.add_trace(go.Scatter(
+        x=[x0, x1, x1, x0, x0], y=[low, low, high, high, low],
+        fill='toself', fillcolor='rgba(0,0,0,0)', line=dict(width=0),
+        hoveron='fills', mode='lines', showlegend=False,
+        hovertemplate=f"{label}<br>High: ${high:,.2f}<br>Low: ${low:,.2f}{width_line}<extra></extra>",
+    ))
 
 
 def _add_hline(fig, y, color, label):
@@ -191,7 +203,7 @@ Run a backtest or upload a results CSV to inspect individual trades here.
     m_end = (exit_date or entry_date or push_date) + pd.Timedelta(days=90)
     fig_m = _base_candlestick(df_monthly, "Monthly — Push context")
     fig_m.update_xaxes(range=[m_start, m_end])
-    _add_zone(fig_m, zone_low_wide, zone_high_wide, ZONE_WIDE_COLOR, "Demand zone")
+    _add_zone(fig_m, df_monthly, zone_low_wide, zone_high_wide, ZONE_WIDE_COLOR, "Demand zone")
     _add_hline(fig_m, push_high, PUSH_COLOR, "Push High")
     _add_hline(fig_m, push_low, PUSH_COLOR, "Push Low")
     if fifty_pct:
@@ -206,7 +218,7 @@ Run a backtest or upload a results CSV to inspect individual trades here.
     w_end = (exit_date or entry_date or push_date) + pd.Timedelta(days=45)
     fig_w = _base_candlestick(df_weekly, "Weekly — Demand zone")
     fig_w.update_xaxes(range=[w_start, w_end])
-    _add_zone(fig_w, zone_low_wide, zone_high_wide, ZONE_TIGHT_COLOR, "Demand zone")
+    _add_zone(fig_w, df_weekly, zone_low_wide, zone_high_wide, ZONE_TIGHT_COLOR, "Demand zone")
     _add_vline(fig_w, push_date, PUSH_COLOR, "Push High")
     if choch_date:
         _add_vline(fig_w, choch_date, CHOCH_COLOR, "CHoCH")
@@ -222,9 +234,9 @@ Run a backtest or upload a results CSV to inspect individual trades here.
     d_end = d_end + pd.Timedelta(days=5)  # buffer after resolution
     fig_d = _base_candlestick(df_daily, "Daily — Entry & outcome")
     fig_d.update_xaxes(range=[d_start, d_end])
-    _add_zone(fig_d, zone_low_wide, zone_high_wide, ZONE_WIDE_COLOR, "Weekly zone")
+    _add_zone(fig_d, df_daily, zone_low_wide, zone_high_wide, ZONE_WIDE_COLOR, "Weekly zone")
     if is_zd and zone_low != zone_low_wide:
-        _add_zone(fig_d, zone_low, zone_high, ZONE_TIGHT_COLOR, "Tightened zone")
+        _add_zone(fig_d, df_daily, zone_low, zone_high, ZONE_TIGHT_COLOR, "Tightened zone")
     _add_hline(fig_d, entry_price, ENTRY_COLOR, "Entry")
     _add_hline(fig_d, stop_loss, STOP_COLOR, "Stop")
     _add_hline(fig_d, target, TARGET_COLOR, "Target")
