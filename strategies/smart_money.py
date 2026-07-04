@@ -123,7 +123,11 @@ def find_demand_zone(df_tf2, push, params):
         for k in range(len(df_after_consol)):
             cl, ch = df_after_consol['Low'].iloc[k], df_after_consol['High'].iloc[k]
             if cl < eq_level and (ch - cl) > 0:
-                inducement = {'date': df_after_consol.index[k], 'low': round(cl, 2), 'high': round(ch, 2)}
+                inducement = {
+                    'date': df_after_consol.index[k], 'low': round(cl, 2), 'high': round(ch, 2),
+                    'open': round(df_after_consol['Open'].iloc[k], 2),
+                    'close': round(df_after_consol['Close'].iloc[k], 2),
+                }
                 break
         if inducement is None: continue
 
@@ -159,7 +163,8 @@ def find_demand_zone(df_tf2, push, params):
         demand_zones.append({
             'zone_type': zone_type, 'zone_low': round(zone_low, 2),
             'zone_high': round(zone_high, 2), 'zone_width_pct': zone_width,
-            'inducement_date': inducement['date'], 'inducement_low': inducement['low']
+            'inducement_date': inducement['date'], 'inducement_low': inducement['low'],
+            'inducement_open': inducement['open'], 'inducement_close': inducement['close'],
         })
 
     if not demand_zones: return None
@@ -190,9 +195,11 @@ def track_outcome(df_tf1, push, retracement):
             'rr_ratio': rr, 'exit_price': exit_price, 'exit_date': exit_date}
 
 
-def backtest_symbol(df_tf1, df_tf2, params, start_date, end_date):
+def backtest_symbol(dfs, params, start_date, end_date):
     """Every historical setup in [start_date, end_date], each tagged with a
-    resolved outcome of 'win' / 'loss' / 'pending'."""
+    resolved outcome of 'win' / 'loss' / 'pending'. `dfs` is (df_tf1, df_tf2)
+    matching TIMEFRAMES order."""
+    df_tf1, df_tf2 = dfs
     df_tf1 = df_tf1[(df_tf1.index >= start_date) & (df_tf1.index <= end_date)]
     df_tf2 = df_tf2[(df_tf2.index >= start_date) & (df_tf2.index <= end_date)]
     if len(df_tf1) < 10 or len(df_tf2) < 10: return []
@@ -211,10 +218,13 @@ def backtest_symbol(df_tf1, df_tf2, params, start_date, end_date):
         if outcome is None: continue
         setups.append({
             'push_date': str(push['hh_date'].date()),
+            'push_low_date': str(push['hl_date'].date()),
             'push_high': push['hh_price'],
             'push_low': push['hl_price'],
             'push_pct': push['push_pct'],
             '50pct_level': push['50pct_level'],
+            'choch_date': str(choch['date'].date()),
+            'entry_date': str(retracement['date'].date()),
             'retracement_pct': retracement['retracement_pct'],
             'zone_type': demand_zone['zone_type'],
             'zone_low': demand_zone['zone_low'],
@@ -251,9 +261,11 @@ def _quick_zone(df_tf2, push):
     return zone_low, zone_high
 
 
-def screen_symbol(df_tf1, df_tf2, current_price, params):
+def screen_symbol(dfs, current_price, params):
     """The most recent still-developing push (not yet broken out, within
-    the last 3 years) and its live status relative to current price."""
+    the last 3 years) and its live status relative to current price.
+    `dfs` is (df_tf1, df_tf2) matching TIMEFRAMES order."""
+    df_tf1, df_tf2 = dfs
     highs, lows = find_swing_points(df_tf1, params)
     pushes = find_main_push(df_tf1, highs, lows, params)  # chronological order
 

@@ -39,17 +39,15 @@ def fetch_data(symbol, interval):
 
 def quick_screen(symbol, strategy, params):
     """Quick screen for the current active/developing setup, if any."""
-    tf1, tf2 = strategy.TIMEFRAMES
-    df_tf1 = fetch_data(symbol, tf1)
-    df_tf2 = fetch_data(symbol, tf2)
-    if df_tf1 is None or df_tf2 is None:
+    dfs = [fetch_data(symbol, tf) for tf in strategy.TIMEFRAMES]
+    if any(df is None for df in dfs):
         return None
 
     current_price = get_current_price(symbol)
     if current_price is None:
         return None
 
-    result = strategy.screen_symbol(df_tf1, df_tf2, current_price, params)
+    result = strategy.screen_symbol(dfs, current_price, params)
     if result is None:
         return None
     result['symbol'] = symbol

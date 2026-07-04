@@ -66,7 +66,8 @@ def show():
         params = dict(strategy.DEFAULT_PARAMS)
         for p in strategy.PARAM_SCHEMA:
             params[p['key']] = st.slider(
-                p['label'], p['min'], p['max'], p['default'], help=p.get('help')
+                p['label'], p['min'], p['max'], p['default'],
+                step=p.get('step'), help=p.get('help')
             )
 
         st.markdown("**Date Range**")
@@ -150,16 +151,14 @@ def show():
             progress_bar = st.progress(0)
             status_text = st.empty()
 
-            tf1, tf2 = strategy.TIMEFRAMES
             for i, symbol in enumerate(stocks):
                 status_text.markdown(f"**Processing:** {symbol} ({i+1}/{len(stocks)})")
                 try:
-                    df_tf1 = fetch_data(symbol, tf1)
-                    df_tf2 = fetch_data(symbol, tf2)
-                    if df_tf1 is None or df_tf2 is None:
+                    dfs = [fetch_data(symbol, tf) for tf in strategy.TIMEFRAMES]
+                    if any(df is None for df in dfs):
                         setups = []
                     else:
-                        setups = strategy.backtest_symbol(df_tf1, df_tf2, params, start_ts, end_ts)
+                        setups = strategy.backtest_symbol(dfs, params, start_ts, end_ts)
                     for s in setups:
                         s['symbol'] = symbol
                         s['sector'] = sectors.get(symbol, 'Unknown')

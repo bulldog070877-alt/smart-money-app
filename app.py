@@ -133,6 +133,7 @@ pages = {
     "🏠 Home": "home",
     "🔍 Backtester": "backtest",
     "📊 Results Analysis": "results",
+    "🔎 Trade Inspector": "trade_inspector",
     "🎯 Daily Screener": "screener",
     "📐 Risk Calculator": "risk",
     "📚 Strategy Guide": "guide",
@@ -163,6 +164,9 @@ elif page == "backtest":
 elif page == "results":
     from pages import results
     results.show()
+elif page == "trade_inspector":
+    from pages import trade_inspector
+    trade_inspector.show()
 elif page == "screener":
     from pages import screener
     screener.show()

@@ -18,6 +18,7 @@ import os
 
 import pandas as pd
 import psycopg2
+import psycopg2.pool
 import streamlit as st
 import yfinance as yf
 
@@ -49,12 +50,31 @@ def connection_string():
     return os.environ["NEON_DATABASE_URL"]
 
 
+@st.cache_resource(show_spinner=False)
+def _get_pool():
+    """A small pool of already-established connections, reused across calls
+    instead of paying a fresh TLS handshake to Neon on every symbol/interval
+    fetch (measured at ~0.86s/connection - the dominant cost of a backtest
+    run, well above the query itself or the yfinance incremental check)."""
+    pool = psycopg2.pool.ThreadedConnectionPool(
+        minconn=1, maxconn=15, dsn=connection_string(), connect_timeout=10,
+    )
+    conn = pool.getconn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_CREATE_TABLE_SQL)
+        conn.commit()
+    finally:
+        pool.putconn(conn)
+    return pool
+
+
 def _get_conn():
-    conn = psycopg2.connect(connection_string(), connect_timeout=10)
-    with conn.cursor() as cur:
-        cur.execute(_CREATE_TABLE_SQL)
-    conn.commit()
-    return conn
+    return _get_pool().getconn()
+
+
+def _release_conn(conn):
+    _get_pool().putconn(conn)
 
 
 def _read_cached(conn, symbol, interval):
@@ -136,4 +156,4 @@ def get_history(symbol, interval, years=DEFAULT_HISTORY_YEARS):
 
         return cached
     finally:
-        conn.close()
+        _release_conn(conn)

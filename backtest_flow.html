@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Smart Money Backtest — Logic Flow</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+    :root {
+        --bg: #0d1b2a;
+        --panel: #1a2744;
+        --border: #2a3f6f;
+        --accent: #4fc3f7;
+        --text: #cadcfc;
+        --muted: #8892a4;
+        --warn: #ff9800;
+        --warn-bg: #3a2a12;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+    }
+    header {
+        padding: 20px 28px 12px;
+        border-bottom: 1px solid var(--border);
+    }
+    header h1 {
+        color: var(--accent);
+        margin: 0 0 4px;
+        font-size: 1.4rem;
+    }
+    header p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+    }
+    .layout {
+        display: flex;
+        height: calc(100vh - 78px);
+    }
+    .diagram-pane {
+        flex: 1 1 60%;
+        overflow: auto;
+        padding: 20px;
+        position: relative;
+    }
+    .controls {
+        position: sticky;
+        top: 0;
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+        z-index: 5;
+    }
+    .controls button {
+        background: var(--panel);
+        color: var(--accent);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .controls button:hover { background: var(--accent); color: var(--bg); }
+    #graph-wrap {
+        transform-origin: top left;
+        transition: transform 0.15s ease;
+    }
+    .detail-pane {
+        flex: 0 0 40%;
+        max-width: 520px;
+        border-left: 1px solid var(--border);
+        padding: 24px 28px;
+        overflow-y: auto;
+        background: #0f1e30;
+    }
+    .detail-pane h2 {
+        color: var(--accent);
+        margin-top: 0;
+        font-size: 1.15rem;
+    }
+    .detail-pane .code-ref {
+        display: inline-block;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-family: Consolas, monospace;
+        font-size: 0.8rem;
+        color: var(--muted);
+        margin-bottom: 14px;
+    }
+    .detail-pane ul { padding-left: 20px; }
+    .detail-pane li { margin-bottom: 8px; line-height: 1.4; }
+    .param {
+        color: var(--accent);
+        font-family: Consolas, monospace;
+    }
+    .placeholder {
+        color: var(--muted);
+        font-style: italic;
+    }
+    .bug-callout {
+        margin-top: 18px;
+        padding: 14px 16px;
+        border-left: 4px solid var(--warn);
+        background: var(--warn-bg);
+        border-radius: 0 6px 6px 0;
+    }
+    .bug-callout b { color: var(--warn); }
+    .legend {
+        margin-top: 24px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        font-size: 0.8rem;
+        color: var(--muted);
+    }
+    .legend .dot {
+        display: inline-block;
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+    }
+    .mermaid { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>📈 Smart Money Strategy — Backtest Logic Flow</h1>
+    <p>Click any stage in the diagram to see its exact logic, parameters, and code reference. Matches <span class="code-ref">strategies/smart_money.py</span> as of this walkthrough.</p>
+</header>
+
+<div class="layout">
+    <div class="diagram-pane">
+        <div class="controls">
+            <button onclick="zoom(1.15)">Zoom in</button>
+            <button onclick="zoom(0.87)">Zoom out</button>
+            <button onclick="resetZoom()">Reset</button>
+        </div>
+        <div id="graph-wrap">
+            <pre class="mermaid">
+flowchart TD
+    A["Fetch monthly (tf1) + weekly (tf2) bars,<br/>filter to Start/End date range"] --> B{"&geq;10 bars in<br/>both timeframes?"}
+    B -- No --> Z["No setups"]
+    B -- Yes --> C["1. SWING POINTS<br/>(monthly)"]
+    C --> D["2. MAIN PUSH"]
+    D --> E{"push % &geq; Min Push %?"}
+    E -- No --> D
+    E -- Yes --> F["Push candidate"]
+    F --> G["3. CHoCH<br/>(weekly)"]
+    G --> H{"CHoCH found?"}
+    H -- No --> X1["Discarded"]
+    H -- Yes --> I["4. RETRACEMENT<br/>(monthly)"]
+    I --> J{"stopped out or<br/>over-retraced?"}
+    J -- Yes --> X2["Discarded"]
+    J -- No --> K{"retracement &geq; Min Retracement?"}
+    K -- No --> I
+    K -- Yes --> L["Retracement confirmed"]
+    L --> M["5. DEMAND ZONE<br/>(weekly)"]
+    M --> N{"qualifying zone?"}
+    N -- No --> X3["Discarded"]
+    N -- Yes --> R["Demand zone confirmed"]
+    R --> S["6. OUTCOME<br/>(monthly)"]
+    S --> T{"risk &leq; 0?"}
+    T -- Yes --> X4["Discarded"]
+    T -- No --> U["WIN / LOSS / PENDING"]
+    U --> V["Row added to results"]
+
+    click A show_fetch
+    click B show_fetch
+    click C show_swing
+    click D show_push
+    click E show_push
+    click F show_push
+    click G show_choch
+    click H show_choch
+    click I show_retrace
+    click J show_retrace
+    click K show_retrace
+    click L show_retrace
+    click M show_zone
+    click N show_zone
+    click R show_zone
+    click S show_outcome
+    click T show_outcome
+    click U show_outcome
+    click V show_outcome
+
+    classDef stage fill:#1a2744,stroke:#4fc3f7,color:#cadcfc,stroke-width:1.5px;
+    classDef decision fill:#1a2744,stroke:#2a3f6f,color:#cadcfc;
+    classDef discard fill:#3a1e1e,stroke:#c62828,color:#cadcfc;
+    classDef bug fill:#3a2a12,stroke:#ff9800,color:#cadcfc,stroke-width:2px;
+    classDef terminal fill:#1a2744,stroke:#26a69a,color:#cadcfc;
+
+    class C,D,G,I,S stage;
+    class M bug;
+    class B,E,H,J,K,N,T decision;
+    class X1,X2,X3,X4,Z discard;
+    class F,L,R,U,V terminal;
+            </pre>
+        </div>
+    </div>
+
+    <div class="detail-pane" id="detail">
+        <h2>Click a stage to inspect it</h2>
+        <p class="placeholder">The orange-outlined "5. DEMAND ZONE" stage has a suspected bug — click it to see the details, or click any other stage to see how it works.</p>
+        <div class="legend">
+            <span class="dot" style="background:#4fc3f7"></span>Stage (does work)
+            <br><span class="dot" style="background:#546e7a"></span>Decision (pass/fail check)
+            <br><span class="dot" style="background:#c62828"></span>Setup discarded here
+            <br><span class="dot" style="background:#26a69a"></span>Confirmed / terminal
+            <br><span class="dot" style="background:#ff9800"></span>Suspected bug
+        </div>
+    </div>
+</div>
+
+<script>
+mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+
+const details = {
+    fetch: {
+        title: "Fetch &amp; Filter",
+        ref: "pages/backtest.py, strategies/smart_money.py:backtest_symbol()",
+        body: `
+        <ul>
+            <li>Pulls monthly (<span class="param">tf1</span>) and weekly (<span class="param">tf2</span>) OHLCV bars from the Neon-backed cache.</li>
+            <li>Filters both to your selected <span class="param">Start date</span> / <span class="param">End date</span> range <b>before</b> any swing/push detection runs.</li>
+            <li>Requires at least 10 bars in each timeframe after filtering, or the symbol is skipped entirely with zero setups.</li>
+        </ul>`
+    },
+    swing: {
+        title: "1. Find Swing Points",
+        ref: "find_swing_points() — smart_money.py:30",
+        body: `
+        <ul>
+            <li>Uses the <b>monthly</b> timeframe only.</li>
+            <li>A bar is a swing high if its High is greater than the High of the <span class="param">SWING_LENGTH</span> (3) bars before <i>and</i> after it. Same logic (inverted) for swing lows.</li>
+            <li>Each swing high is then classified as <b>HH</b> (higher high) or <b>LH</b> (lower high) relative to the previous swing high. Lows classified as <b>HL</b>/<b>LL</b> the same way.</li>
+            <li><span class="param">SWING_LENGTH</span> is fixed at 3 — not exposed in the UI.</li>
+        </ul>`
+    },
+    push: {
+        title: "2. Find Main Push",
+        ref: "find_main_push() — smart_money.py:46",
+        body: `
+        <ul>
+            <li>For every <b>HH</b> swing point, searches backward for the nearest prior <b>HL</b> that has no lower low occurring after it (i.e. the low the rally actually started from).</li>
+            <li>Push size % = <span class="param">(HH price − HL price) / HL price × 100</span>.</li>
+            <li>Only kept if push % &geq; <span class="param">Min Push %</span> (UI slider, default 40).</li>
+            <li>Also computes the <b>50% level</b> = HL + push_size × 0.5, used later by the demand zone check.</li>
+        </ul>`
+    },
+    choch: {
+        title: "3. Find CHoCH (Change of Character)",
+        ref: "find_choch() — smart_money.py:71",
+        body: `
+        <ul>
+            <li>Switches to the <b>weekly</b> timeframe, looking only at bars <i>after</i> the push's HH date.</li>
+            <li>Walks forward looking for 3 consecutive weekly lows, each lower than the last (<span class="param">low[-1] &lt; low[-2] &lt; low[-3]</span>), while all three stay <i>above</i> the push's HL price.</li>
+            <li>If found, this marks the point where the market has shown early signs of turning — a prerequisite for a valid entry setup.</li>
+            <li>If no such 3-bar sequence ever appears, the whole push candidate is discarded.</li>
+        </ul>`
+    },
+    retrace: {
+        title: "4. Check Retracement",
+        ref: "check_retracement() — smart_money.py:82",
+        body: `
+        <ul>
+            <li>Back to the <b>monthly</b> timeframe, walking forward bar-by-bar starting after the CHoCH date.</li>
+            <li>Discarded immediately if a bar's low breaks below the HL (stopped out before an entry ever triggered), or if the retracement exceeds <span class="param">Max Retracement</span> (95%, fixed constant).</li>
+            <li>Accepted once retracement % = <span class="param">(HH − low) / (HH − HL) × 100</span> reaches <span class="param">Min Retracement %</span> (UI slider, default 50). That bar's low becomes the <b>entry price</b>.</li>
+        </ul>`
+    },
+    zone: {
+        title: "5. Find Demand Zone",
+        ref: "find_demand_zone() — smart_money.py:94",
+        body: `
+        <ul>
+            <li>Searches <b>weekly</b> bars strictly between the push's HL and HH dates for a 4-bar (<span class="param">MIN_CONSOL</span>) consolidation window where the high-low range is &leq; <span class="param">MAX_CONSOL_RANGE</span> (15%) and at least 2 lows are within <span class="param">EQUAL_LOW_TOL</span> (1.5%) of each other.</li>
+            <li>From there it looks for an <b>inducement</b> (a low that dips below the equal-low level) and then an <b>impulse</b> candle (a strong bullish close within 2 bars after it).</li>
+            <li>Zone is only kept if its low is &leq; the push's 50% level, and a "freshness" check confirms price never traded back into the zone between the impulse and the push's HH date.</li>
+        </ul>
+        <div class="bug-callout">
+            <b>⚠ Suspected bug</b><br>
+            The initial consolidation window search (line 95) is correctly bounded to <span class="param">[HL date, HH date]</span>. But the subsequent inducement search (line 121) and impulse search (line 131) have <b>no upper date bound</b> — they scan forward indefinitely, potentially well past the push's HH date.
+            <br><br>
+            The "freshness" check (line 151) only verifies the zone wasn't retested <i>between the impulse date and the HH date</i>. If the impulse itself lands <b>after</b> the HH date, that date range is inverted/empty, so the check trivially passes — silently accepting a zone built from price action that has nothing to do with the original push.
+            <br><br>
+            <b>Likely symptom:</b> some demand zones / entries in your results correspond to a later time period than the push that supposedly produced them.
+        </div>`
+    },
+    outcome: {
+        title: "6. Track Outcome",
+        ref: "track_outcome() — smart_money.py:171",
+        body: `
+        <ul>
+            <li>Monthly bars again, starting after the retracement/entry date.</li>
+            <li><span class="param">risk = entry − HL (stop)</span>, <span class="param">reward = HH (target) − entry</span>. Discarded if risk &leq; 0.</li>
+            <li>Walks forward: first bar where <span class="param">high &geq; target</span> → <b>WIN</b>. First bar where <span class="param">low &leq; stop</span> → <b>LOSS</b>. If neither happens before the data runs out → <b>PENDING</b>.</li>
+            <li>Whichever comes first, chronologically, wins — a bar that hits both target and stop in the same month is resolved as a WIN since the win check runs first.</li>
+        </ul>`
+    }
+};
+
+function showDetail(key) {
+    const d = details[key];
+    if (!d) return;
+    document.getElementById('detail').innerHTML =
+        `<h2>${d.title}</h2><span class="code-ref">${d.ref}</span>${d.body}`;
+}
+
+window.show_fetch = () => showDetail('fetch');
+window.show_swing = () => showDetail('swing');
+window.show_push = () => showDetail('push');
+window.show_choch = () => showDetail('choch');
+window.show_retrace = () => showDetail('retrace');
+window.show_zone = () => showDetail('zone');
+window.show_outcome = () => showDetail('outcome');
+
+let scale = 1;
+function zoom(factor) {
+    scale *= factor;
+    document.getElementById('graph-wrap').style.transform = `scale(${scale})`;
+}
+function resetZoom() {
+    scale = 1;
+    document.getElementById('graph-wrap').style.transform = 'scale(1)';
+}
+</script>
+
+</body>
+</html>
