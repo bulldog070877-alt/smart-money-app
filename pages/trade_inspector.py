@@ -68,45 +68,72 @@ def _base_candlestick(df, title):
     fig.update_layout(
         title=dict(text=title, font=dict(size=14, color='#cadcfc')),
         height=340,
-        margin=dict(l=10, r=10, t=36, b=10),
+        # Generous right margin - hline annotations (Push High, Target, etc.)
+        # render outside the plot area on that side and get clipped without it.
+        margin=dict(l=10, r=130, t=36, b=10),
         xaxis_rangeslider_visible=False,
         template='plotly_dark',
         paper_bgcolor='#1a2744',
         plot_bgcolor='#1a2744',
         font=dict(color='#cadcfc'),
         showlegend=False,
+        hovermode='closest',
     )
     fig.update_xaxes(gridcolor='#2a3f6f')
     fig.update_yaxes(gridcolor='#2a3f6f')
     return fig
 
 
-def _add_zone(fig, df, low, high, color, label):
+def _add_zone(fig, df, low, high, color, label, show_boundary_labels=True):
     if low is None or high is None or df is None or len(df) == 0:
         return
     fig.add_hrect(y0=low, y1=high, fillcolor=color, line_width=0, layer='below',
                    annotation_text=label, annotation_position='top left',
                    annotation_font=dict(size=10, color='#e8b04b'))
-    # Invisible fill trace spanning the whole chart width, purely so hovering
-    # anywhere inside the band shows the exact zone bounds - the hrect above
-    # already provides the visible shading.
+
+    # A tight (e.g. tightened Zone Daily) band can be just a few pixels tall
+    # against the full price range - add visible boundary lines with their
+    # own value labels so the numbers are readable even when the fill is too
+    # thin to see or click. Skipped when other labels (entry/stop/target)
+    # already crowd this chart - the shaded band + hover still work either way.
+    if show_boundary_labels:
+        fig.add_hline(y=high, line_dash='dot', line_width=1, line_color='#e8b04b',
+                      annotation_text=f"{label} high: ${high:,.2f}",
+                      annotation_position='right', annotation_font=dict(size=9, color='#e8b04b'))
+        fig.add_hline(y=low, line_dash='dot', line_width=1, line_color='#e8b04b',
+                      annotation_text=f"{label} low: ${low:,.2f}",
+                      annotation_position='right', annotation_font=dict(size=9, color='#e8b04b'))
+
+    # Invisible fill trace spanning the whole chart width, so hovering
+    # anywhere inside the band shows the exact zone bounds - padded a bit
+    # vertically so a very narrow zone is still easy to hit with the mouse.
+    # Note: with hoveron='fills' and no markers/lines, Plotly only displays
+    # the trace's `name` on hover (a fill has no discrete point for
+    # hovertemplate to bind to), so the detail text has to live in `name`.
     x0, x1 = df.index.min(), df.index.max()
+    y_span = df['High'].max() - df['Low'].min()
+    pad = max(y_span * 0.01, (high - low) * 0.5)
+    lo_pad, hi_pad = low - pad, high + pad
     width = round(((high - low) / low) * 100, 2) if low else None
-    width_line = f"<br>Width: {width}%" if width is not None else ""
+    width_text = f" | Width: {width}%" if width is not None else ""
+    detail_name = f"{label} — High: ${high:,.2f} | Low: ${low:,.2f}{width_text}"
     fig.add_trace(go.Scatter(
-        x=[x0, x1, x1, x0, x0], y=[low, low, high, high, low],
+        x=[x0, x1, x1, x0, x0], y=[lo_pad, lo_pad, hi_pad, hi_pad, lo_pad],
         fill='toself', fillcolor='rgba(0,0,0,0)', line=dict(width=0),
-        hoveron='fills', mode='lines', showlegend=False,
-        hovertemplate=f"{label}<br>High: ${high:,.2f}<br>Low: ${low:,.2f}{width_line}<extra></extra>",
+        hoveron='fills', mode='none', showlegend=False,
+        name=detail_name, hoverinfo='name',
+        hoverlabel=dict(namelength=-1),  # Plotly truncates name with "..." by
+                                          # default (namelength=15) - disable that.
     ))
 
 
-def _add_hline(fig, y, color, label):
+def _add_hline(fig, y, color, label, yshift=0):
     if y is None:
         return
     fig.add_hline(y=y, line_dash=LINE_DASH, line_color=color, line_width=1.5,
                   annotation_text=label, annotation_position='right',
-                  annotation_font=dict(size=10, color=color))
+                  annotation_font=dict(size=10, color=color),
+                  annotation_yshift=yshift)
 
 
 def _add_vline(fig, x, color, label):
@@ -203,7 +230,7 @@ Run a backtest or upload a results CSV to inspect individual trades here.
     m_end = (exit_date or entry_date or push_date) + pd.Timedelta(days=90)
     fig_m = _base_candlestick(df_monthly, "Monthly — Push context")
     fig_m.update_xaxes(range=[m_start, m_end])
-    _add_zone(fig_m, df_monthly, zone_low_wide, zone_high_wide, ZONE_WIDE_COLOR, "Demand zone")
+    _add_zone(fig_m, df_monthly, zone_low_wide, zone_high_wide, ZONE_WIDE_COLOR, "Weekly zone (ref)")
     _add_hline(fig_m, push_high, PUSH_COLOR, "Push High")
     _add_hline(fig_m, push_low, PUSH_COLOR, "Push Low")
     if fifty_pct:
@@ -234,12 +261,19 @@ Run a backtest or upload a results CSV to inspect individual trades here.
     d_end = d_end + pd.Timedelta(days=5)  # buffer after resolution
     fig_d = _base_candlestick(df_daily, "Daily — Entry & outcome")
     fig_d.update_xaxes(range=[d_start, d_end])
-    _add_zone(fig_d, df_daily, zone_low_wide, zone_high_wide, ZONE_WIDE_COLOR, "Weekly zone")
+    # Boundary-line labels skipped here (show_boundary_labels=False) since
+    # entry/stop/target sit right on top of the zone for Zone Daily trades by
+    # construction - the shaded band + hover already give the exact numbers.
+    _add_zone(fig_d, df_daily, zone_low_wide, zone_high_wide, ZONE_WIDE_COLOR, "Weekly zone",
+              show_boundary_labels=False)
     if is_zd and zone_low != zone_low_wide:
-        _add_zone(fig_d, df_daily, zone_low, zone_high, ZONE_TIGHT_COLOR, "Tightened zone")
-    _add_hline(fig_d, entry_price, ENTRY_COLOR, "Entry")
-    _add_hline(fig_d, stop_loss, STOP_COLOR, "Stop")
-    _add_hline(fig_d, target, TARGET_COLOR, "Target")
+        _add_zone(fig_d, df_daily, zone_low, zone_high, ZONE_TIGHT_COLOR, "Tightened zone",
+                  show_boundary_labels=False)
+    # Staggered vertically (yshift) so the labels don't overlap when these
+    # three levels sit close together in price.
+    _add_hline(fig_d, entry_price, ENTRY_COLOR, "Entry", yshift=-24)
+    _add_hline(fig_d, stop_loss, STOP_COLOR, "Stop", yshift=0)
+    _add_hline(fig_d, target, TARGET_COLOR, "Target", yshift=24)
     _add_vline(fig_d, entry_date, ENTRY_COLOR, "Entry")
 
     if 'win' in outcome:
