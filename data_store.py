@@ -70,11 +70,27 @@ def _get_pool():
 
 
 def _get_conn():
-    return _get_pool().getconn()
+    """Check out a connection from the pool, verifying it's actually alive
+    first. Neon's free-tier compute auto-suspends after idle time, which can
+    leave a pooled connection dead - a plain getconn() would hand that back
+    and fail on first use instead of reconnecting."""
+    pool = _get_pool()
+    for _ in range(3):
+        conn = pool.getconn()
+        if conn.closed:
+            pool.putconn(conn, close=True)
+            continue
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            return conn
+        except Exception:
+            pool.putconn(conn, close=True)
+    return pool.getconn()  # let a real connectivity problem surface normally
 
 
-def _release_conn(conn):
-    _get_pool().putconn(conn)
+def _release_conn(conn, discard=False):
+    _get_pool().putconn(conn, close=discard)
 
 
 def _read_cached(conn, symbol, interval):
@@ -136,6 +152,7 @@ def get_history(symbol, interval, years=DEFAULT_HISTORY_YEARS):
     small. Every call after that just tops up new bars, regardless of
     `years` - it's only consulted for the initial backfill."""
     conn = _get_conn()
+    discard = False
     try:
         cached = _read_cached(conn, symbol, interval)
         if cached is None:
@@ -151,9 +168,14 @@ def get_history(symbol, interval, years=DEFAULT_HISTORY_YEARS):
             if incremental is not None and len(incremental) > 0:
                 _write_cache(conn, symbol, interval, incremental)
                 cached = _read_cached(conn, symbol, interval)
+        except psycopg2.Error:
+            raise  # connection-level failure - don't swallow, handled below
         except Exception:
             pass  # yfinance unavailable/rate-limited - serve what's cached
 
         return cached
+    except psycopg2.Error:
+        discard = True
+        raise
     finally:
-        _release_conn(conn)
+        _release_conn(conn, discard=discard)

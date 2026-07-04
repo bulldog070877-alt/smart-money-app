@@ -8,10 +8,17 @@ CANDLE_UP = '#3ecf8e'
 CANDLE_DOWN = '#f0616b'
 ZONE_WIDE_COLOR = 'rgba(232, 176, 74, 0.14)'
 ZONE_TIGHT_COLOR = 'rgba(232, 176, 74, 0.38)'
-PUSH_COLOR = '#5ec8f2'
-WIN_COLOR = '#3ecf8e'
-LOSS_COLOR = '#f0616b'
-PENDING_COLOR = '#ff9800'
+
+# Overlay line/marker colors - deliberately avoid green/red so nothing here
+# gets mistaken for the candlestick up/down coloring.
+PUSH_COLOR = '#5ec8f2'      # blue - push structure (HH/HL, 50% level)
+CHOCH_COLOR = '#b388ff'     # violet - CHoCH marker
+TOUCH_COLOR = '#e8b04b'     # gold - zone touch marker (matches zone fill)
+ENTRY_COLOR = '#f2f6fc'     # near-white - entry price/date, the pivot point
+TARGET_COLOR = '#26c6da'    # cyan - target line + WIN marker/shading
+STOP_COLOR = '#ff9800'      # orange - stop line + LOSS marker/shading
+PENDING_COLOR = '#8a7bd8'   # muted violet - pending shading
+LINE_DASH = 'dot'
 
 FIELD_LABELS = {
     'symbol': 'Symbol', 'sector': 'Sector',
@@ -85,15 +92,15 @@ def _add_zone(fig, low, high, color, label):
 def _add_hline(fig, y, color, label):
     if y is None:
         return
-    fig.add_hline(y=y, line_dash='dash', line_color=color, line_width=1.3,
+    fig.add_hline(y=y, line_dash=LINE_DASH, line_color=color, line_width=1.5,
                   annotation_text=label, annotation_position='right',
                   annotation_font=dict(size=10, color=color))
 
 
-def _add_vline(fig, x, color, label, dash='dot'):
+def _add_vline(fig, x, color, label):
     if x is None:
         return
-    fig.add_vline(x=x, line_dash=dash, line_color=color, line_width=1.3,
+    fig.add_vline(x=x, line_dash=LINE_DASH, line_color=color, line_width=1.5,
                   annotation_text=label, annotation_position='top',
                   annotation_font=dict(size=10, color=color))
 
@@ -202,10 +209,10 @@ Run a backtest or upload a results CSV to inspect individual trades here.
     _add_zone(fig_w, zone_low_wide, zone_high_wide, ZONE_TIGHT_COLOR, "Demand zone")
     _add_vline(fig_w, push_date, PUSH_COLOR, "Push High")
     if choch_date:
-        _add_vline(fig_w, choch_date, '#7e93ad', "CHoCH")
+        _add_vline(fig_w, choch_date, CHOCH_COLOR, "CHoCH")
     if touch_date:
-        _add_vline(fig_w, touch_date, '#e8b04b', "Touch")
-    _add_vline(fig_w, entry_date, WIN_COLOR, "Entry")
+        _add_vline(fig_w, touch_date, TOUCH_COLOR, "Touch")
+    _add_vline(fig_w, entry_date, ENTRY_COLOR, "Entry")
     st.plotly_chart(fig_w, use_container_width=True)
 
     # ---------- Daily: entry, stop/target, outcome ----------
@@ -218,21 +225,21 @@ Run a backtest or upload a results CSV to inspect individual trades here.
     _add_zone(fig_d, zone_low_wide, zone_high_wide, ZONE_WIDE_COLOR, "Weekly zone")
     if is_zd and zone_low != zone_low_wide:
         _add_zone(fig_d, zone_low, zone_high, ZONE_TIGHT_COLOR, "Tightened zone")
-    _add_hline(fig_d, entry_price, '#7e93ad', "Entry")
-    _add_hline(fig_d, stop_loss, LOSS_COLOR, "Stop")
-    _add_hline(fig_d, target, WIN_COLOR, "Target")
-    _add_vline(fig_d, entry_date, '#7e93ad', "Entry", dash='solid')
+    _add_hline(fig_d, entry_price, ENTRY_COLOR, "Entry")
+    _add_hline(fig_d, stop_loss, STOP_COLOR, "Stop")
+    _add_hline(fig_d, target, TARGET_COLOR, "Target")
+    _add_vline(fig_d, entry_date, ENTRY_COLOR, "Entry")
 
     if 'win' in outcome:
-        _add_vline(fig_d, exit_date, WIN_COLOR, "WIN", dash='solid')
+        _add_vline(fig_d, exit_date, TARGET_COLOR, "WIN")
         if exit_date:
-            fig_d.add_vrect(x0=entry_date, x1=exit_date, fillcolor='rgba(62,207,142,0.10)', line_width=0)
+            fig_d.add_vrect(x0=entry_date, x1=exit_date, fillcolor='rgba(38,198,218,0.10)', line_width=0)
     elif 'loss' in outcome:
-        _add_vline(fig_d, exit_date, LOSS_COLOR, "LOSS", dash='solid')
+        _add_vline(fig_d, exit_date, STOP_COLOR, "LOSS")
         if exit_date:
-            fig_d.add_vrect(x0=entry_date, x1=exit_date, fillcolor='rgba(240,97,107,0.10)', line_width=0)
+            fig_d.add_vrect(x0=entry_date, x1=exit_date, fillcolor='rgba(255,152,0,0.10)', line_width=0)
     else:
-        fig_d.add_vrect(x0=entry_date, x1=default_end, fillcolor='rgba(255,152,0,0.08)', line_width=0)
+        fig_d.add_vrect(x0=entry_date, x1=default_end, fillcolor='rgba(138,123,216,0.09)', line_width=0)
 
     st.plotly_chart(fig_d, use_container_width=True)
 
