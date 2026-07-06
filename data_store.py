@@ -45,8 +45,14 @@ CREATE TABLE IF NOT EXISTS prices (
 
 
 def connection_string():
-    if "NEON_DATABASE_URL" in st.secrets:
-        return st.secrets["NEON_DATABASE_URL"]
+    # st.secrets itself raises if there's no secrets.toml/secrets source at
+    # all (e.g. a script run outside Streamlit, like a GitHub Actions job) -
+    # not just a clean "key not found", so this needs a try, not just `in`.
+    try:
+        if "NEON_DATABASE_URL" in st.secrets:
+            return st.secrets["NEON_DATABASE_URL"]
+    except Exception:
+        pass
     return os.environ["NEON_DATABASE_URL"]
 
 

@@ -135,6 +135,7 @@ pages = {
     "📊 Results Analysis": "results",
     "🔎 Trade Inspector": "trade_inspector",
     "🎯 Daily Screener": "screener",
+    "📡 Forward Test Tracker": "forward_test",
     "📐 Risk Calculator": "risk",
     "📚 Strategy Guide": "guide",
 }
@@ -170,6 +171,9 @@ elif page == "trade_inspector":
 elif page == "screener":
     from pages import screener
     screener.show()
+elif page == "forward_test":
+    from pages import forward_test
+    forward_test.show()
 elif page == "risk":
     from pages import risk_calc
     risk_calc.show()

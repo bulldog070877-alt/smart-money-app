@@ -1,0 +1,25 @@
+name: Momentum Reversal Daily Scan
+
+on:
+  schedule:
+    # 21:30 UTC = 4:30pm ET / 5:30pm EDT - after US market close, Mon-Fri
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily momentum scan
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: python daily_momentum_scan.py
