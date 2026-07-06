@@ -26,8 +26,16 @@ PARAM_SCHEMA = [
      "help": "Gain from entry price counted as a win, within the holding period"},
     {"key": "HOLD_DAYS", "label": "Holding Period (days)", "min": 3, "max": 10, "default": 5,
      "help": "Number of daily bars to track after entry before calling it pending"},
+    {"key": "ENABLE_RISK_FILTER", "label": "Enable Max Risk % filter", "type": "checkbox", "default": True,
+     "help": "When on, skips trades where the stop is wider than Max Risk % of entry - "
+             "fewer setups, but better risk:reward on the ones kept"},
     {"key": "MAX_RISK_PCT", "label": "Max Risk %", "min": 0.5, "max": 5.0, "default": 1.5, "step": 0.1,
-     "help": "Skip the trade if entry-to-stop distance exceeds this % of entry price"},
+     "help": "Skip the trade if entry-to-stop distance exceeds this % of entry price "
+             "(only applies when the filter above is enabled)"},
+    {"key": "ENABLE_MIN_RR", "label": "Enable Min RR filter", "type": "checkbox", "default": False,
+     "help": "When on, skips trades whose reward:risk ratio is below Min RR Ratio"},
+    {"key": "MIN_RR_RATIO", "label": "Min RR Ratio", "min": 0.5, "max": 5.0, "default": 2.0, "step": 0.1,
+     "help": "Skip the trade if reward:risk is below this (only applies when the filter above is enabled)"},
 ]
 
 DEFAULT_PARAMS = {
@@ -113,8 +121,13 @@ def backtest_symbol(dfs, params, start_date, end_date):
             continue  # entry gapped through the stop already
 
         risk_pct = round((risk / entry_price) * 100, 2)
-        if risk_pct > params['MAX_RISK_PCT']:
+        if params.get('ENABLE_RISK_FILTER', True) and risk_pct > params['MAX_RISK_PCT']:
             continue  # stop too wide relative to entry - skip rather than take a poor R:R trade
+
+        reward = round(target - entry_price, 2)
+        rr_ratio = round(reward / risk, 2) if risk > 0 else None
+        if params.get('ENABLE_MIN_RR') and rr_ratio is not None and rr_ratio < params['MIN_RR_RATIO']:
+            continue  # reward:risk too thin - skip rather than take a poor R:R trade
 
         window = df_tf3[df_tf3.index >= entry_date].iloc[:hold_days]
         if len(window) == 0:
@@ -134,7 +147,6 @@ def backtest_symbol(dfs, params, start_date, end_date):
             last_close = window['Close'].iloc[-1]
             outcome = 'pending_positive' if last_close > entry_price else 'pending_negative'
 
-        reward = round(target - entry_price, 2)
         setups.append({
             'push_date': str(push['hh_date'].date()),
             'push_low_date': str(push['hl_date'].date()),
@@ -155,7 +167,7 @@ def backtest_symbol(dfs, params, start_date, end_date):
             'risk': risk,
             'risk_pct': risk_pct,
             'reward': reward,
-            'rr_ratio': round(reward / risk, 2) if risk > 0 else None,
+            'rr_ratio': rr_ratio,
             'max_high': round(window['High'].max(), 2),
             'min_low': round(window['Low'].min(), 2),
             'outcome': outcome,
@@ -205,12 +217,18 @@ def screen_symbol(dfs, current_price, params):
     risk_pct = round((risk / zone_high) * 100, 2) if zone_high else None
 
     if just_touched_today:
-        # Mirror backtest_symbol's Max Risk % filter - don't flag as
-        # actionable if the backtester would have skipped this trade.
-        if risk_pct is not None and risk_pct <= params['MAX_RISK_PCT']:
+        # Mirror backtest_symbol's filters - don't flag as actionable if the
+        # backtester would have skipped this trade.
+        risk_ok = (not params.get('ENABLE_RISK_FILTER', True)
+                   or (risk_pct is not None and risk_pct <= params['MAX_RISK_PCT']))
+        rr_ok = (not params.get('ENABLE_MIN_RR')
+                 or (rr is not None and rr >= params['MIN_RR_RATIO']))
+        if risk_ok and rr_ok:
             status, emoji = 'ENTRY TOMORROW', '🎯'
-        else:
+        elif not risk_ok:
             status, emoji = 'ZONE TOO WIDE', '⚪'
+        else:
+            status, emoji = 'LOW RR', '⚪'
 
     retracement_pct = round(((valid_push['hh_price'] - current_price) /
                              (valid_push['hh_price'] - valid_push['hl_price'])) * 100, 1)

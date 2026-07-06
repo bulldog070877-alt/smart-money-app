@@ -15,6 +15,10 @@ PARAM_SCHEMA = [
      "help": "Minimum Main Push size to qualify"},
     {"key": "MIN_RETRACEMENT", "label": "Min Retracement %", "min": 40, "max": 60, "default": 50,
      "help": "Minimum pullback before looking for entry"},
+    {"key": "ENABLE_MIN_RR", "label": "Enable Min RR filter", "type": "checkbox", "default": False,
+     "help": "When on, skips trades whose reward:risk ratio is below Min RR Ratio"},
+    {"key": "MIN_RR_RATIO", "label": "Min RR Ratio", "min": 0.5, "max": 5.0, "default": 2.0, "step": 0.1,
+     "help": "Skip the trade if reward:risk is below this (only applies when the filter above is enabled)"},
 ]
 
 DEFAULT_PARAMS = {
@@ -216,6 +220,9 @@ def backtest_symbol(dfs, params, start_date, end_date):
         if demand_zone is None: continue
         outcome = track_outcome(df_tf1, push, retracement)
         if outcome is None: continue
+        if (params.get('ENABLE_MIN_RR') and outcome['rr_ratio'] is not None
+                and outcome['rr_ratio'] < params['MIN_RR_RATIO']):
+            continue
         setups.append({
             'push_date': str(push['hh_date'].date()),
             'push_low_date': str(push['hl_date'].date()),
@@ -308,6 +315,10 @@ def screen_symbol(dfs, current_price, params):
         risk = entry - stop
         if risk > 0:
             rr = round((target - entry) / risk, 2)
+
+    if (status == 'INSIDE ZONE' and params.get('ENABLE_MIN_RR')
+            and rr is not None and rr < params['MIN_RR_RATIO']):
+        status, emoji = 'LOW RR', '⚪'
 
     return {
         'status': status,

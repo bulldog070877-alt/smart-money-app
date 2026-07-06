@@ -6,6 +6,25 @@ from data_store import get_history, DEFAULT_HISTORY_YEARS
 from market_universe import SP500_TICKERS, NIFTY500_TICKERS
 from strategies import list_strategies, get_strategy
 
+# Columns shown in the results table, in preference order - only the ones
+# actually present for the strategy that produced `df` are used, since each
+# strategy's setup dict has different fields (e.g. Momentum Reversal has no
+# push/zone columns at all).
+_PREFERRED_COLUMNS = [
+    'push_date', 'signal_date', 'push_pct', 'zone_type', 'zone_low', 'zone_high',
+    'entry_date', 'entry_price', 'stop_loss', 'target', 'rr_ratio',
+]
+
+_OUTCOME_LABELS = {
+    'win': '✅ Win', 'loss': '❌ Loss', 'pending': '⏳ Pending',
+    'pending_positive': '🟡 Pending (+)', 'pending_negative': '🟠 Pending (-)',
+}
+
+
+def _display_columns(df, extra=()):
+    return ['symbol', 'sector'] + [c for c in _PREFERRED_COLUMNS if c in df.columns] + list(extra) + ['outcome']
+
+
 OPTIMISED_UNIVERSE = {
     'Consumer Staples': ['COST', 'WMT', 'MCD', 'PG', 'ADM', 'EL', 'MO', 'KO', 'PEP', 'CL'],
     'Industrials': ['ITW', 'DOV', 'HON', 'GE', 'CAT', 'DE', 'MMM', 'EMR', 'ETN'],
@@ -47,7 +66,7 @@ def show():
 
         if market == "US (S&P 500)":
             mode_options = [
-                "Optimised Universe (79 stocks)",
+                f"Optimised Universe ({sum(len(v) for v in OPTIMISED_UNIVERSE.values())} stocks)",
                 f"S&P 500 ({len(SP500_TICKERS)} stocks)",
                 "Custom Stocks",
                 "Single Stock Test",
@@ -65,10 +84,15 @@ def show():
 
         params = dict(strategy.DEFAULT_PARAMS)
         for p in strategy.PARAM_SCHEMA:
-            params[p['key']] = st.slider(
-                p['label'], p['min'], p['max'], p['default'],
-                step=p.get('step'), help=p.get('help')
-            )
+            if p.get('type') == 'checkbox':
+                params[p['key']] = st.checkbox(
+                    p['label'], value=p['default'], help=p.get('help')
+                )
+            else:
+                params[p['key']] = st.slider(
+                    p['label'], p['min'], p['max'], p['default'],
+                    step=p.get('step'), help=p.get('help')
+                )
 
         st.markdown("**Date Range**")
         today = datetime.now().date()
@@ -189,24 +213,26 @@ def show():
                     st.metric("Win Rate", f"{wr}%")
 
                 if completed > 0:
-                    win_df = df[df['outcome'] == 'win']
-                    avg_rr = round(win_df['rr_ratio'].mean(), 2)
-                    ev = round((wr/100 * avg_rr) - (1 - wr/100), 3)
+                    win_rrs = df[df['outcome'] == 'win']['rr_ratio'].dropna()
 
                     m5, m6, m7 = st.columns(3)
-                    with m5: st.metric("Avg RR", f"{avg_rr}:1")
-                    with m6: st.metric("Expected Value", f"+{ev}R")
-                    with m7: st.metric("Max RR", f"{round(win_df['rr_ratio'].max(), 2)}:1")
+                    if len(win_rrs) > 0:
+                        avg_rr = round(win_rrs.mean(), 2)
+                        ev = round((wr/100 * avg_rr) - (1 - wr/100), 3)
+                        with m5: st.metric("Avg RR", f"{avg_rr}:1")
+                        with m6: st.metric("Expected Value", f"+{ev}R")
+                        with m7: st.metric("Max RR", f"{round(win_rrs.max(), 2)}:1")
+                    else:
+                        # No RR data - e.g. Momentum Reversal with its stop loss
+                        # off, where risk (and so RR) is undefined by design.
+                        with m5: st.metric("Avg RR", "N/A")
+                        with m6: st.metric("Expected Value", "N/A")
+                        with m7: st.metric("Max RR", "N/A")
 
                 # Results table
                 st.markdown("#### 📋 Detailed Results")
-                display_df = df[['symbol', 'sector', 'push_date', 'push_pct',
-                                 'zone_type', 'zone_low', 'zone_high',
-                                 'entry_price', 'stop_loss', 'target',
-                                 'rr_ratio', 'outcome']].copy()
-                display_df['outcome'] = display_df['outcome'].map(
-                    {'win': '✅ Win', 'loss': '❌ Loss', 'pending': '⏳ Pending'}
-                )
+                display_df = df[_display_columns(df)].copy()
+                display_df['outcome'] = display_df['outcome'].map(_OUTCOME_LABELS).fillna(display_df['outcome'])
                 st.dataframe(display_df, use_container_width=True, height=400)
 
                 # Download
@@ -224,9 +250,7 @@ def show():
         elif st.session_state.get('backtest_results') is not None and len(st.session_state['backtest_results']) > 0:
             st.info("Previous results loaded. Run a new backtest or go to Results Analysis.")
             df = st.session_state['backtest_results']
-            st.dataframe(df[['symbol', 'push_pct', 'zone_type',
-                             'rr_ratio', 'outcome']].head(20),
-                        use_container_width=True)
+            st.dataframe(df[_display_columns(df)].head(20), use_container_width=True)
         else:
             st.markdown("""
 <div class='info-box'>
