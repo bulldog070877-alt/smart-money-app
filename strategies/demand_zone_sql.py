@@ -70,6 +70,8 @@ def _fetch_zones(symbol, floor_date, as_of_date, min_push_pct):
 def _qualifying_zones(rows, params):
     out = []
     for r in rows:
+        if r['out_zone_invalidated']:
+            continue  # a subsequent daily low already broke below the zone's low
         if params.get('REQUIRE_DECISIONAL', True) and r['out_zone_type'] != 'DECISIONAL':
             continue
         if params.get('REQUIRE_WEEKLY_REFINED', True) and not r['out_weekly_refined']:

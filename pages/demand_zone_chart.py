@@ -16,13 +16,16 @@ EXTREME_COLOR_REFINED = 'rgba(94, 200, 242, 0.32)'
 DECISIONAL_COLOR = 'rgba(179, 136, 255, 0.16)'
 DECISIONAL_COLOR_REFINED = 'rgba(179, 136, 255, 0.32)'
 CURRENT_ZONE_COLOR = 'rgba(255, 152, 0, 0.34)'
+INVALIDATED_COLOR = 'rgba(140, 140, 140, 0.14)'
 PUSH_COLOR = '#5ec8f2'
 BOS_COLOR = '#b388ff'
 FIFTY_COLOR = '#7e93ad'
 NOW_COLOR = '#f2f6fc'
 
 
-def _zone_color(zone_type, weekly_refined, is_current):
+def _zone_color(zone_type, weekly_refined, is_current, invalidated):
+    if invalidated:
+        return INVALIDATED_COLOR
     if is_current:
         return CURRENT_ZONE_COLOR
     if zone_type == 'EXTREME':
@@ -57,14 +60,21 @@ def build_figure(symbol, df, zones):
     summary_lines = [f"<b>{symbol} — Two-Pass Refinement</b>", "Daily + Weekly Timeframes", "─" * 28]
     for z in zones_sorted:
         low, high = float(z['out_final_low']), float(z['out_final_high'])
+        invalidated = bool(z['out_zone_invalidated'])
         status = _zone_status(current_price, low, high)
-        is_current = status == 'INSIDE'
+        is_current = status == 'INSIDE' and not invalidated
         label = f"{z['out_zone_type']} #{z['out_zone_num']}"
         refined_tag = " (W)" if z['out_weekly_refined'] else ""
-        _add_zone(fig, df, low, high, _zone_color(z['out_zone_type'], z['out_weekly_refined'], is_current),
+        _add_zone(fig, df, low, high,
+                   _zone_color(z['out_zone_type'], z['out_weekly_refined'], is_current, invalidated),
                    label, show_boundary_labels=False)
-        now_tag = "  <-- NOW" if is_current else ""
-        summary_lines.append(f"{label}{refined_tag}: ${low:,.2f}–${high:,.2f}{now_tag}")
+        if invalidated:
+            tag = "  [INVALIDATED]"
+        elif is_current:
+            tag = "  <-- NOW"
+        else:
+            tag = ""
+        summary_lines.append(f"{label}{refined_tag}: ${low:,.2f}–${high:,.2f}{tag}")
 
     _add_hline(fig, hl_price, PUSH_COLOR, f"HL ${hl_price:,.2f}", yshift=-14)
     _add_hline(fig, hh_price, PUSH_COLOR, f"HH ${hh_price:,.2f}", yshift=14)
@@ -142,6 +152,7 @@ def show():
         'Zone': f"{z['out_zone_type']} #{z['out_zone_num']}",
         'Low': float(z['out_final_low']), 'High': float(z['out_final_high']),
         'Weekly Refined': bool(z['out_weekly_refined']),
-        'Status': _zone_status(current_price, float(z['out_final_low']), float(z['out_final_high'])),
+        'Status': 'INVALIDATED' if z['out_zone_invalidated']
+                  else _zone_status(current_price, float(z['out_final_low']), float(z['out_final_high'])),
     } for z in zones_sorted]
     st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
