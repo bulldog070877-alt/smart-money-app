@@ -99,6 +99,24 @@ def _release_conn(conn, discard=False):
     _get_pool().putconn(conn, close=discard)
 
 
+def query_rows(sql, params=None):
+    """Run a read-only query/function call and return rows as a list of
+    dicts keyed by column name. Used by strategies that read from Postgres
+    views/functions directly instead of (or alongside) cached OHLCV bars."""
+    conn = _get_conn()
+    discard = False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params or ())
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+    except psycopg2.Error:
+        discard = True
+        raise
+    finally:
+        _release_conn(conn, discard=discard)
+
+
 def _read_cached(conn, symbol, interval):
     with conn.cursor() as cur:
         cur.execute(

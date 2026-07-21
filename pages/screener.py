@@ -32,8 +32,10 @@ def get_current_price(symbol):
 def fetch_data(symbol, interval):
     try:
         df = get_history(symbol, interval)
-        if df is None: return None
-        return df if len(df) >= 10 else None
+        if df is None or len(df) < 10: return None
+        df = df.copy()
+        df.attrs['symbol'] = symbol
+        return df
     except Exception:
         return None
 

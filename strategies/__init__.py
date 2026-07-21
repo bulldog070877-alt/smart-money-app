@@ -24,11 +24,13 @@ or a future scheduled-run script - they all look strategies up by key.
 from . import smart_money
 from . import zone_daily
 from . import momentum_reversal
+from . import demand_zone_sql
 
 STRATEGIES = {
     "smart_money": smart_money,
     "zone_daily": zone_daily,
     "momentum_reversal": momentum_reversal,
+    "demand_zone_sql": demand_zone_sql,
 }
 
 

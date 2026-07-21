@@ -134,8 +134,11 @@ pages = {
     "🔍 Backtester": "backtest",
     "📊 Results Analysis": "results",
     "🔎 Trade Inspector": "trade_inspector",
+    "🗺️ Demand Zone Chart": "demand_zone_chart",
+    "📅 Demand Zone Watchlist": "demand_zone_watchlist",
     "🎯 Daily Screener": "screener",
     "📡 Forward Test Tracker": "forward_test",
+    "📡 Demand Zone Forward Test": "demand_zone_forward_test",
     "📐 Risk Calculator": "risk",
     "📚 Strategy Guide": "guide",
 }
@@ -168,12 +171,21 @@ elif page == "results":
 elif page == "trade_inspector":
     from pages import trade_inspector
     trade_inspector.show()
+elif page == "demand_zone_chart":
+    from pages import demand_zone_chart
+    demand_zone_chart.show()
+elif page == "demand_zone_watchlist":
+    from pages import demand_zone_watchlist
+    demand_zone_watchlist.show()
 elif page == "screener":
     from pages import screener
     screener.show()
 elif page == "forward_test":
     from pages import forward_test
     forward_test.show()
+elif page == "demand_zone_forward_test":
+    from pages import demand_zone_forward_test
+    demand_zone_forward_test.show()
 elif page == "risk":
     from pages import risk_calc
     risk_calc.show()

@@ -1,0 +1,26 @@
+name: Demand Zone Daily Scan
+
+on:
+  schedule:
+    # 21:35 UTC = 4:35pm ET / 5:35pm EDT - after US market close, Mon-Fri
+    # (5 min after the Momentum Reversal scan, to avoid both hitting Neon at once)
+    - cron: "35 21 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily demand zone scan
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: python daily_demand_zone_scan.py

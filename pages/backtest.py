@@ -38,7 +38,11 @@ OPTIMISED_UNIVERSE = {
 
 def fetch_data(symbol, interval):
     try:
-        return get_history(symbol, interval)
+        df = get_history(symbol, interval)
+        if df is not None:
+            df = df.copy()
+            df.attrs['symbol'] = symbol
+        return df
     except Exception:
         return None
 
