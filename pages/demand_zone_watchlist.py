@@ -10,16 +10,21 @@ import psycopg2
 import streamlit as st
 
 import data_store
+from data_store import get_history, query_rows
+from pages.demand_zone_chart import build_figure
+from strategies.demand_zone_sql import DEFAULT_PARAMS as DZ_DEFAULT_PARAMS
 
 STATUS_EMOJI = {
     'INSIDE ZONE': '🟢', 'ENTRY TOMORROW': '🎯', 'READY': '🟡',
-    'APPROACHING': '🟠', 'WATCHING': '🔴', 'BELOW ZONE': '❌',
-    'ZONE TOO WIDE': '⚪', 'LOW RR': '⚪',
+    'APPROACHING': '🟠',
 }
 PRIORITY = {
     'ENTRY TOMORROW': 0, 'INSIDE ZONE': 1, 'READY': 2, 'APPROACHING': 3,
-    'WATCHING': 4, 'ZONE TOO WIDE': 5, 'LOW RR': 5, 'BELOW ZONE': 6,
 }
+
+# Non-actionable statuses (far from the zone, or already invalidated) - kept
+# in the database for history, but hidden from this page's view.
+HIDDEN_STATUSES = ('WATCHING', 'BELOW ZONE', 'ZONE TOO WIDE', 'LOW RR')
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -73,7 +78,7 @@ button), each day's full-universe scan will appear here.
 """, unsafe_allow_html=True)
         return
 
-    col1, col2 = st.columns([1, 3])
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
         scan_date = st.selectbox("Scan date", dates, format_func=lambda d: d.strftime('%Y-%m-%d (%a)'))
     with col2:
@@ -81,8 +86,15 @@ button), each day's full-universe scan will appear here.
             "Filter by status", list(STATUS_EMOJI.keys()),
             help="Leave empty to show every status",
         )
+    with col3:
+        min_rr = st.number_input(
+            "Min RR Ratio", min_value=0.0, max_value=10.0, value=1.5, step=0.1,
+            help="Only show rows with reward:risk at or above this",
+        )
 
     df = load_watchlist(scan_date)
+    df = df[~df['status'].isin(HIDDEN_STATUSES)]
+    df = df[df['rr_ratio'] >= min_rr]
     if status_filter:
         df = df[df['status'].isin(status_filter)]
 
@@ -105,13 +117,43 @@ button), each day's full-universe scan will appear here.
     show_df['_priority'] = show_df['status'].map(lambda s: PRIORITY.get(s, 9))
     show_df = show_df.sort_values(['_priority', 'distance_pct'], na_position='last')
 
-    st.dataframe(
-        show_df[['symbol', 'Status', 'current_price', 'zone_low', 'zone_high', 'zone_type',
-                 'weekly_refined', 'distance_pct', 'retracement_pct', 'push_pct', 'rr_ratio']],
+    display_cols = ['symbol', 'Status', 'current_price', 'zone_low', 'zone_high', 'zone_type',
+                     'weekly_refined', 'distance_pct', 'retracement_pct', 'push_pct', 'rr_ratio']
+    event = st.dataframe(
+        show_df[display_cols],
         use_container_width=True, hide_index=True, height=520,
+        on_select="rerun", selection_mode="single-row",
     )
 
     csv = df.to_csv(index=False)
     st.download_button(
         "📥 Download CSV", csv, f"demand_zone_watchlist_{scan_date}.csv", "text/csv",
     )
+
+    st.markdown("---")
+    selected_rows = event.selection.rows if event and event.selection else []
+    if not selected_rows:
+        st.caption("👆 Click a row above to view its Demand Zone chart here, without leaving this page.")
+        return
+
+    sel_symbol = show_df[display_cols].iloc[selected_rows[0]]['symbol']
+    st.markdown(f"#### 📐 Demand Zone Chart — {sel_symbol}")
+    with st.spinner(f"Loading {sel_symbol}..."):
+        chart_df = get_history(sel_symbol, '1d')
+        if chart_df is None or len(chart_df) < 10:
+            st.warning(f"No cached price history for {sel_symbol}.")
+            return
+        zones = query_rows(
+            "SELECT * FROM find_demand_zones_v2(%s, %s, %s, %s)",
+            (sel_symbol, chart_df.index.min().date(), chart_df.index.max().date(),
+             float(DZ_DEFAULT_PARAMS['MIN_PUSH_PCT'])),
+        )
+    if not zones:
+        st.warning(f"No qualifying zone set found for {sel_symbol} at Min Push % >= "
+                   f"{DZ_DEFAULT_PARAMS['MIN_PUSH_PCT']}.")
+        return
+
+    fig, _, _ = build_figure(sel_symbol, chart_df, zones)
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("Solid fill = weekly-refined zone. Fainter fill = daily-only zone. "
+               "Drag to pan, scroll/pinch to zoom.")
