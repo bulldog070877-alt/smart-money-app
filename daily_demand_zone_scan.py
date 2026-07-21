@@ -35,6 +35,7 @@ import sys
 from datetime import datetime
 
 import psycopg2
+from psycopg2.extras import execute_values
 
 import data_store
 from market_universe import SP500_TICKERS
@@ -46,6 +47,24 @@ UNIVERSE = SP500_TICKERS
 
 def _conn():
     return psycopg2.connect(data_store.connection_string())
+
+
+def _ensure_alive(conn):
+    """Neon's free-tier compute can idle-suspend during the ~20-minute
+    per-symbol scoring loop in scan_universe, leaving this connection dead
+    by the time we're ready to write - verify it's still alive and
+    reconnect if not, rather than losing the whole run's work at the last
+    step."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        return conn
+    except psycopg2.Error:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return _conn()
 
 
 def _grade_window(window, entry_price, target, stop, hold_days):
@@ -160,10 +179,18 @@ def _record_watchlist(conn, symbol, scan_date, result):
 
 
 def scan_universe(conn, universe):
-    """Single pass over the universe: records every symbol's current status
-    to demand_zone_watchlist (the daily watchlist, kept as history), and
-    additionally opens a forward-test prediction in demand_zone_predictions
-    for symbols with a genuine new 'ENTRY TOMORROW' signal."""
+    """Single pass over the universe: records every currently-qualifying
+    symbol's status to demand_zone_watchlist as a clean replacement of that
+    day's snapshot, and additionally opens a forward-test prediction in
+    demand_zone_predictions for symbols with a genuine new 'ENTRY TOMORROW'
+    signal.
+
+    Scores every symbol first (without writing), then deletes any existing
+    watchlist rows for the scan_date(s)/symbols just scored, before writing
+    fresh results - otherwise a symbol that no longer qualifies (e.g. its
+    zone just got invalidated) would leave its last-qualifying-day's stale
+    row sitting in the table forever, since nothing would ever touch it
+    again once it stops producing a result."""
     with conn.cursor() as cur:
         cur.execute(
             "SELECT DISTINCT symbol FROM demand_zone_predictions "
@@ -171,7 +198,7 @@ def scan_universe(conn, universe):
         )
         already_open = {r[0] for r in cur.fetchall()}
 
-    watchlisted, new_count = 0, 0
+    scored = []  # (symbol, scan_date, current_price, result-or-None)
     for symbol in universe:
         try:
             df = data_store.get_history(symbol, "1d")
@@ -181,10 +208,33 @@ def scan_universe(conn, universe):
             df.attrs['symbol'] = symbol
             current_price = round(float(df['Close'].iloc[-1]), 2)
             result = strat.screen_symbol((df,), current_price, PARAMS)
-            if result is None:
-                continue
-
             scan_date = df.index[-1].date()
+            scored.append((symbol, scan_date, current_price, result))
+        except Exception as e:
+            print(f"  ! {symbol}: {e}", file=sys.stderr)
+
+    conn = _ensure_alive(conn)  # the scoring loop above can take ~20 min
+
+    # Scoped to exactly the (symbol, scan_date) pairs just re-scored - not
+    # every symbol in the universe. A symbol that merely failed to fetch
+    # this run (transient network blip) is simply absent from `scored`, so
+    # its last-known-good row from a previous run is left untouched instead
+    # of being wiped with nothing to replace it.
+    pairs = [(symbol, scan_date) for symbol, scan_date, _, _ in scored]
+    if pairs:
+        with conn.cursor() as cur:
+            execute_values(
+                cur,
+                "DELETE FROM demand_zone_watchlist WHERE (symbol, scan_date) IN (VALUES %s)",
+                pairs,
+            )
+        conn.commit()
+
+    watchlisted, new_count = 0, 0
+    for symbol, scan_date, current_price, result in scored:
+        if result is None:
+            continue
+        try:
             _record_watchlist(conn, symbol, scan_date, result)
             watchlisted += 1
 
@@ -222,7 +272,10 @@ def main():
         watchlisted, new = scan_universe(conn, UNIVERSE)
         print(f"  symbols watchlisted: {watchlisted}, new signals recorded: {new}")
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass  # scan_universe may have reconnected internally; this handle can be stale
     print(f"[{datetime.now()}] Done.")
 
 
