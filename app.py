@@ -1,6 +1,7 @@
 import streamlit as st
 
 import auth
+from nav import DEMAND_ZONE_CHART_LABEL
 
 st.set_page_config(
     page_title="Smart Money Strategy",
@@ -134,7 +135,7 @@ pages = {
     "🔍 Backtester": "backtest",
     "📊 Results Analysis": "results",
     "🔎 Trade Inspector": "trade_inspector",
-    "🗺️ Demand Zone Chart": "demand_zone_chart",
+    DEMAND_ZONE_CHART_LABEL: "demand_zone_chart",
     "📅 Demand Zone Watchlist": "demand_zone_watchlist",
     "🎯 Daily Screener": "screener",
     "📡 Forward Test Tracker": "forward_test",
@@ -143,7 +144,10 @@ pages = {
     "📚 Strategy Guide": "guide",
 }
 
-selection = st.sidebar.radio("Navigation", list(pages.keys()))
+if '_nav_redirect' in st.session_state:
+    st.session_state['nav_page'] = st.session_state.pop('_nav_redirect')
+
+selection = st.sidebar.radio("Navigation", list(pages.keys()), key="nav_page")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("""

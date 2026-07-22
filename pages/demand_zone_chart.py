@@ -109,10 +109,13 @@ def show():
 
     col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
-        symbol = st.text_input("Symbol", "TSLA").strip().upper()
+        symbol = st.text_input(
+            "Symbol", st.session_state.get('dz_chart_symbol', 'TSLA')
+        ).strip().upper()
     with col2:
-        min_push_pct = st.slider("Min Push %", 10, 150, 20,
-                                  help="Minimum monthly HL->HH push size to qualify a zone set")
+        min_push_pct = st.slider(
+            "Min Push %", 10, 150, st.session_state.get('dz_chart_push', 20),
+            help="Minimum monthly HL->HH push size to qualify a zone set")
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
         load = st.button("📊 Load Chart", use_container_width=True)

@@ -11,6 +11,7 @@ import streamlit as st
 
 import data_store
 from data_store import get_history, query_rows
+from nav import go_to_demand_zone_chart
 from pages.demand_zone_chart import build_figure
 from strategies.demand_zone_sql import DEFAULT_PARAMS as DZ_DEFAULT_PARAMS
 
@@ -137,7 +138,12 @@ button), each day's full-universe scan will appear here.
         return
 
     sel_symbol = show_df[display_cols].iloc[selected_rows[0]]['symbol']
-    st.markdown(f"#### 📐 Demand Zone Chart — {sel_symbol}")
+    header_col, link_col = st.columns([4, 1])
+    with header_col:
+        st.markdown(f"#### 📐 Demand Zone Chart — {sel_symbol}")
+    with link_col:
+        if st.button("🔗 Open full page", key="dz_watchlist_open_chart", use_container_width=True):
+            go_to_demand_zone_chart(sel_symbol, DZ_DEFAULT_PARAMS['MIN_PUSH_PCT'])
     with st.spinner(f"Loading {sel_symbol}..."):
         chart_df = get_history(sel_symbol, '1d')
         if chart_df is None or len(chart_df) < 10:

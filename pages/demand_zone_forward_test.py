@@ -3,6 +3,7 @@ import psycopg2
 import streamlit as st
 
 import data_store
+from nav import go_to_demand_zone_chart
 
 RESOLVED = ('win', 'loss', 'pending_positive', 'pending_negative')
 OPEN = ('awaiting_entry', 'pending')
@@ -82,16 +83,21 @@ least once, new signals and their outcomes will appear here.
 
     st.markdown("---")
 
+    sel_symbol = None
+
     if len(open_preds):
         st.markdown("### 📈 Open Positions")
         show_df = open_preds.copy()
         show_df['Status'] = show_df['outcome'].map(lambda o: f"{STATUS_EMOJI[o]} {STATUS_LABEL[o]}")
-        st.dataframe(
-            show_df[['symbol', 'Status', 'signal_date', 'entry_date', 'entry_price_est',
+        open_cols = ['symbol', 'Status', 'signal_date', 'entry_date', 'entry_price_est',
                      'target', 'stop_loss', 'hold_days', 'zone_type', 'zone_low', 'zone_high',
-                     'weekly_refined', 'rr_ratio']],
-            use_container_width=True, hide_index=True,
+                     'weekly_refined', 'rr_ratio']
+        open_event = st.dataframe(
+            show_df[open_cols], use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="single-row", key="dz_fwd_open_table",
         )
+        if open_event and open_event.selection and open_event.selection.rows:
+            sel_symbol = show_df.iloc[open_event.selection.rows[0]]['symbol']
 
     st.markdown("### 📋 Resolved Predictions")
     if len(resolved):
@@ -100,14 +106,22 @@ least once, new signals and their outcomes will appear here.
         show_df['Realized %'] = (
             (show_df['exit_price'] - show_df['entry_price_est']) / show_df['entry_price_est'] * 100
         ).round(2)
-        st.dataframe(
-            show_df[['symbol', 'Status', 'signal_date', 'entry_date', 'entry_price_est',
-                     'exit_price', 'exit_date', 'Realized %', 'zone_type', 'zone_low', 'zone_high',
-                     'weekly_refined', 'push_pct', 'rr_ratio']],
-            use_container_width=True, hide_index=True,
+        resolved_cols = ['symbol', 'Status', 'signal_date', 'entry_date', 'entry_price_est',
+                         'exit_price', 'exit_date', 'Realized %', 'zone_type', 'zone_low', 'zone_high',
+                         'weekly_refined', 'push_pct', 'rr_ratio']
+        resolved_event = st.dataframe(
+            show_df[resolved_cols], use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="single-row", key="dz_fwd_resolved_table",
         )
+        if resolved_event and resolved_event.selection and resolved_event.selection.rows:
+            sel_symbol = show_df.iloc[resolved_event.selection.rows[0]]['symbol']
     else:
         st.info("No predictions have resolved yet - check back after a few trading days.")
+
+    if sel_symbol:
+        st.markdown("---")
+        if st.button(f"🗺️ View {sel_symbol}'s Demand Zone Chart", key="dz_fwd_view_chart"):
+            go_to_demand_zone_chart(sel_symbol)
 
     with st.expander("ℹ️ How to read this"):
         st.markdown("""
